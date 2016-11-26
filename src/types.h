@@ -4,6 +4,7 @@
 #include <Eigen/Core>
 #include <memory>
 #include <vector>
+#include <iosfwd>
 
 template <typename T, int M = Eigen::Dynamic, int N = Eigen::Dynamic>
 using Mat_ = Eigen::Matrix<T,M,N>;
@@ -49,5 +50,17 @@ template <class _T, class ... Args> inline
 SharedPointer<_T> make_shared(Args&& ... args) {
   return std::make_shared<_T>(std::forward<Args>(args)...);
 }
+
+struct ImageSize
+{
+  int rows = 0;
+  int cols = 0;
+
+  inline ImageSize(int r = 0, int c = 0)
+  : rows(r), cols(c) {}
+
+ private:
+  friend std::ostream& operator<<(std::ostream&, const ImageSize&);
+}; // ImageSize
 
 #endif

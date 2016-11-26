@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 #include <typeinfo>
+#include <algorithm>
+#include <random>
 #include <map>
 
 #include <boost/program_options.hpp>

@@ -1,10 +1,24 @@
 #include <ceres/ceres.h>
+#include <ceres/rotation.h>
 
 #include "types.h"
 #include "photobundle.h"
+#include "sample_eigen.h"
 
 #include <cmath>
 #include <type_traits>
+#include <iterator>
+#include <algorithm>
+#include <map>
+
+// this is just for YCM to stop highlighting openmp as error (there is no openmp
+// in clang3.5)
+#define HAS_OPENMP __GNUC__ >= 4 && __clang__ == 0
+
+#if HAS_OPENMP
+#include <omp.h>
+#endif
+
 
 /**
  * \return bilinearly interpolated pixel value at subpixel location (xf,yf)
@@ -65,7 +79,7 @@ void interpolateFixedPatch(Vec_<T, square<2*R+1>()>& dst,
 
 template <int R, class ImageType, class ProjType, typename T = double>
 void copyFixedPatch(Vec_<T, square<2*R+1>()>& dst, const ImageType& I,
-                    const ProjType& p, const T& fillval = 0.0)
+                    const ProjType& p)
 {
   const int x = static_cast<int>( std::round( p[0] ) );
   const int y = static_cast<int>( std::round( p[1] ) );

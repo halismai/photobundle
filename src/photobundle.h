@@ -11,14 +11,6 @@
 
 #include <boost/circular_buffer.hpp>
 
-struct ImageSize
-{
-  int rows = 0;
-  int cols = 0;
-
-  inline ImageSize() {}
-}; // ImageSize
-
 class PhotometricBundleAdjustment
 {
  public:

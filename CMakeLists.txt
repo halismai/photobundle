@@ -41,11 +41,18 @@ list(APPEND MY_LIBRARIES ${CERES_LIBRARIES})
 
 find_package(TBB QUIET)
 find_package(OpenMP QUIET)
+find_package(OpenCV QUIET)
 
 if(TBB_FOUND AND WITH_TBB)
   include_directories(${TBB_INCLUDE_DIRS})
   list(APPEND MY_LIBRARIES ${TBB_LIBRARIES})
   add_definitions(-DWITH_TBB)
+endif()
+
+if(OPENCV_FOUND AND WITH_OPENCV)
+  include_directories(${OpenCV_INCLUDE_DIRS})
+  list(APPEND MY_LIBRARIES ${OpenCV_LIBS})
+  add_definitions(-DWITH_OPENCV)
 endif()
 
 
@@ -64,4 +71,5 @@ include_directories(${Boost_INCLUDE_DIRS})
 list(APPEND MY_LIBRARIES ${Boost_LIBRARIES})
 
 add_subdirectory(src)
+add_subdirectory(apps)
 
