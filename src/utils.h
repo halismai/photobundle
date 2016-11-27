@@ -69,6 +69,39 @@ std::ostream& toStream(const Sequence& seq, std::ostream& os = std::cout)
   return os;
 }
 
+template <class T>
+typename std::enable_if<std::is_integral<T>::value, std::uniform_int_distribution<T>>::type
+getUniformDistribution(T max_val)
+{
+  return std::uniform_int_distribution<T>(0, max_val);
+}
+
+template <class T>
+typename std::enable_if<std::is_floating_point<T>::value, std::uniform_real_distribution<T>>::type
+getUniformDistribution(T max_val)
+{
+  return std::uniform_real_distribution<T>(0, max_val);
+}
+
+template <typename T>
+std::vector<T> generateRandomVector(size_t N, T max_val = std::is_integral<T>::value ? T(255) : T(1))
+{
+  std::mt19937 rng;
+  auto dist = getUniformDistribution<T>(max_val);
+  auto gen = std::bind(dist, rng);
+
+  std::vector<T> ret(N);
+  std::generate(std::begin(ret), std::end(ret), gen);
+  return ret;
+}
+
+/** based on Facebook's Folly code */
+template <class T>
+void doNotOptimizeAway(T&& d)
+{
+  asm volatile("" : "+r"(d));
+}
+
 /**
  * converts the input string to a number
  */

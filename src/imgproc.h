@@ -10,6 +10,12 @@
 void imgradient(const uint8_t* src, const ImageSize&, float* Ix, float* Iy);
 void imgradient(const float* src, const ImageSize&, float* Ix, float *Iy);
 
+/**
+ * census transform
+ */
+Image_<uint8_t> censusTransform(const Image_<uint8_t>& I, float sigma = -1.0);
+
+
 void computeBitPlanes(const Image_<uint8_t>&, EigenAlignedContainer_<Image_<float>>& dst);
 
 template <typename T> static inline constexpr

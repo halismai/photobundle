@@ -22,6 +22,7 @@ option(WITH_MATLAB   "compile with Matlab interface" OFF)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wextra -Wparentheses")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fomit-frame-pointer")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -funroll-loops -fpeel-loops")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mtune=native")
 
 if(BUILD_STATIC)
   set(LIBRARY_TYPE STATIC)

@@ -23,6 +23,7 @@
 #define BPVO_TIMER_H
 
 #include <chrono>
+#include "utils.h"
 
 /**
  * Simple timer. The timer is enabled if BITPLANES_WITH_TIMING is enabled when
@@ -75,6 +76,8 @@ double TimeCode(int N_rep, Func&& f, Args... args)
   for(int i = 0; i < N_rep; ++i)
     f(args...);
   auto t = timer.stop();
+
+  utils::doNotOptimizeAway(t);
   return t.count() / (double) N_rep;
 }
 

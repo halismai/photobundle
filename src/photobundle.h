@@ -43,9 +43,9 @@ class PhotometricBundleAdjustment
 
     enum class DescriptorType
     {
-      Intensity,
-      IntensityAndGradient,
-      BitPlanes
+      Intensity, // single channel image patch is only intensities
+      IntensityAndGradient, // 3 channels, {I, Ix, Iy}
+      BitPlanes // 8 channel BitPlanes
     };
 
     /** type of the patch/descriptor */
