@@ -14,10 +14,15 @@
 class PhotometricBundleAdjustment
 {
  public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
+
   /**
    */
   struct Options
   {
+    /** maximum number of points to intialize from a new frame */
+    int maxNumPoints = 4096;
+
     /** number of frames in the sliding window */
     int slidingWindowSize = 5;
 
@@ -37,9 +42,15 @@ class PhotometricBundleAdjustment
     /** optional gaussian weighting to focus on the center of the patch */
     bool doGaussianWeighting = false;
 
+    /** print information about the optimization */
+    bool verbose = true;
+
     /** minimum score to verify if a scene point exists in a new frame. This is
      * the ZNCC score which is [-1, 1] */
     double minScore = 0.75;
+
+    /** threshold to use for a HuberLoss (if > 0) */
+    double robustThreshold = 0.05;
 
     enum class DescriptorType
     {
@@ -73,11 +84,13 @@ class PhotometricBundleAdjustment
     // optimization statistics
     //
     double initialCost  = -1.0; //< objective at the first start
-    double finalcost    = -1.0; //< objective at termination
+    double finalCost    = -1.0; //< objective at termination
     double fixedCost    = -1.0; //< fixed cost not included in optimization
 
     int numSuccessfulStep = 0; //< number of successfull optimizer steps
     int numResiduals      = 0; //< number of residuals in the problem
+
+    double totalTime = -1.0;   //< total optimization run time in seconds
 
     std::string message; //< optimizer message
 
@@ -111,6 +124,9 @@ class PhotometricBundleAdjustment
    */
   void addFrame(const uint8_t* image, const float* depth_map, const Mat44& T, Result* = nullptr);
 
+ protected:
+  void optimize(Result*);
+
  private:
   struct ScenePoint;
   typedef UniquePointer<ScenePoint>      ScenePointPointer;
@@ -126,6 +142,8 @@ class PhotometricBundleAdjustment
   /** \return the frame data at the given id */
   const DescriptorFrame* getFrameAtId(uint32_t id) const;
 
+  class DescriptorError;
+
  private:
   uint32_t _frame_id = 0;
 
@@ -135,6 +153,9 @@ class PhotometricBundleAdjustment
   Trajectory _trajectory;
   DescriptorFrameBuffer _frame_buffer;
   ScenePointPointerList _scene_points;
+
+  Image_<uint16_t> _mask;
+  Image_<float> _saliency_map;
 }; // PhotometricBundleAdjustment
 
 #endif // PHOTOBUNDLE_PHOTOBUNDLE_H

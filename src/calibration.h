@@ -5,6 +5,8 @@
 #include "eigen.h"
 #include <iostream>
 
+#include <Eigen/LU>
+
 /**
  * Stereo calibration using a pinhole model
  */
@@ -18,14 +20,16 @@ class Calibration
    * \param b the stereo baseline
    */
   inline Calibration(const Mat33& K, double b)
-      : _K(K), _baseline(b) {}
+      : _K(K), _K_inv(_K.inverse()), _baseline(b) {}
 
   inline const double& b() const { return _baseline; }
   inline const double& fx() const { return _K(0,0); }
   inline const double& fy() const { return _K(1,1); }
   inline const double& cx() const { return _K(0,2); }
   inline const double& cy() const { return _K(1,2); }
+
   inline const Mat33& K() const { return _K; }
+  inline const Mat33& Kinv() const { return _K_inv; }
 
   template <typename T> inline
   void project(const T* X, T& u, T& v) const
@@ -59,7 +63,7 @@ class Calibration
   }
 
  private:
-  Mat33 _K;
+  Mat33 _K, _K_inv;
   double _baseline;
 }; // Calibration
 

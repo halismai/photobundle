@@ -160,29 +160,70 @@ struct CensusTransformFunc
 #endif
 
 
-Image_<uint8_t> censusTransform(const Image_<uint8_t>& I, float sigma)
+Image_<uint8_t> censusTransform(const uint8_t* I_ptr, const ImageSize& im_size)
 {
-  if(sigma > 0.0) {
-    // smooth the image prior to computing the census transform
-  }
+  Image_<uint8_t> ret(im_size.rows, im_size.cols);
+  auto dst_ptr = ret.data();
 
-  Image_<uint8_t> ret(I.rows(), I.cols());
+  memset(dst_ptr, 0, im_size.cols);
 
-  memset(ret.data(), 0, ret.cols());
 #if defined(WITH_TBB)
-  tbb::parallel_for(tbb::blocked_range<int>(1, I.rows()-1),
-                    CensusTransformFunc(I.data(), I.cols(), ret.data()));
+  tbb::parallel_for(tbb::blocked_range<int>(1, im_size.rows-1),
+                    CensusTransformFunc(I_ptr, im_size.cols, dst_ptr));
 #else
   for(int y = 1; y < I.rows() - 1; ++y) {
-    auto srow = I.data() + y*I.cols;
-    auto drow = ret.data() + y*I.cols;
-    census_row(srow, I.cols(), drow);
+    auto srow = I_ptr + y*im_size.cols;
+    auto drow = dst_ptr + y*im_size.cols;
+    census_row(srow, im_size.cols, drow);
   }
 #endif
 
-  memset(ret.data() + (ret.rows()-1)*ret.cols(), 0, ret.cols());
-
+  memset(dst_ptr + (im_size.rows-1)*im_size.cols, 0, im_size.cols);
   return ret;
+}
+
+static inline
+void ExtractBitPlanesChannel(const uint8_t* src, const ImageSize& image_size,
+                             int bit, float* dst, float sigma)
+{
+  int N = image_size.rows * image_size.cols;
+  for(int i = 0; i < N; ++i) {
+    dst[i] = static_cast<float>( (src[i] & (1 << bit)) >> bit );
+  }
+
+  if(sigma > 0.0) {
+    cv::Mat dst_(image_size.rows, image_size.cols, cv::DataType<float>::type, (void*) dst);
+    cv::GaussianBlur(dst_, dst_, cv::Size(5,5), sigma, sigma);
+  }
+}
+
+void computeBitPlanes(const uint8_t* image, const ImageSize& im_size,
+                      EigenAlignedContainer_<Image_<float>>& dst, float sigma_ct, float sigma_bp)
+{
+  auto rows = im_size.rows, cols = im_size.cols;
+  const uint8_t* src_ptr = nullptr;
+  cv::Mat I_s;
+  if(sigma_ct > 0.0f) {
+    const cv::Mat I(rows, cols, cv::DataType<uint8_t>::type, (void*) image);
+    cv::GaussianBlur(I, I_s, cv::Size(3, 3), sigma_ct);
+    src_ptr = I_s.ptr<const uint8_t>();
+  } else {
+    src_ptr = image;
+  }
+
+  const auto C = censusTransform(src_ptr, im_size);
+
+  if(dst.size() != 8)
+    dst.resize(8);
+
+#if defined(WITH_OPENMP)
+#pragma omp parallel for
+#endif
+  for(size_t i = 0; i < 8; ++i) {
+    if(dst[i].rows() != rows || dst[i].cols() != cols)
+      dst[i].resize(rows, cols);
+    ExtractBitPlanesChannel(C.data(), ImageSize(rows, cols), i, dst[i].data(), sigma_bp);
+  }
 }
 
 
@@ -192,7 +233,7 @@ void imsmooth(const float* src, const ImageSize& im_size, int ks, double s, floa
   const cv::Mat src_(im_size.rows, im_size.cols, cv::DataType<float>::type, (void*) src);
   cv::Mat dst_(im_size.rows, im_size.cols, cv::DataType<float>::type, (void*) dst);
 
-  cv::GaussianBlur(src_f, dst_, cv::Size(ks, ks), s, s);
+  cv::GaussianBlur(src_, dst_, cv::Size(ks, ks), s, s);
 #else
 #error "compile WITH_OPENCV"
 #endif

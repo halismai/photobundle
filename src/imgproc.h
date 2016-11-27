@@ -18,16 +18,12 @@ void imsmooth(const uint8_t* src, const ImageSize&, int kernel_size, double sigm
 void imsmooth(const float* src, const ImageSize&, int kernel_size, double sigma, float* dst);
 //void imsmooth(const Image_<float>& src, int size, double sigma, Image_<float>& dst);
 
-/**
- * census transform
- */
-Image_<uint8_t> censusTransform(const Image_<uint8_t>& I, float sigma = -1.0);
-
 
 /**
  * bitplanes
  */
-void computeBitPlanes(const Image_<uint8_t>&, EigenAlignedContainer_<Image_<float>>& dst,
+void computeBitPlanes(const uint8_t* I_ptr, const ImageSize& im_size,
+                      EigenAlignedContainer_<Image_<float>>& dst,
                       float sigma_ct = 1.0, float sigma_bp = 1.5);
 
 template <typename T> static inline constexpr

@@ -21,14 +21,33 @@ int main()
   {
     auto t = TimeCode(10,
                       [&]() {imsmooth(I.ptr<uint8_t>(), ImageSize(I.rows, I.cols), 5, 2.0, Is.ptr<float>()); });
-    printf("time %g\n", t);
+    printf("imsmooth time %g\n", t);
   }
 
+  /*
   cv::Mat dimg;
   cv::convertScaleAbs(Is, dimg);
   cv::imshow("dimg", dimg);
   cv::waitKey(0);
+  */
+
+  EigenAlignedContainer_<Image_<float>> bp;
+  computeBitPlanes(I.ptr<uint8_t>(), ImageSize(I.rows, I.cols), bp, 1.0, 1.5);
+
+  {
+    auto t = TimeCode(50, [&] {computeBitPlanes(I.ptr<uint8_t>(), ImageSize(I.rows, I.cols), bp, 1.0, 1.5);} );
+    printf("bitplanes time %g\n", t);
+  }
+
+  for(size_t i = 0; i < bp.size(); ++i) {
+    cv::Mat_<float> B1(I.rows, I.cols, bp[i].data());
+    cv::Mat dimg;
+    cv::convertScaleAbs(B1, dimg, 255);
+    cv::imshow("dimg", dimg);
+    cv::waitKey(0);
+  }
 
   return 0;
 }
 #endif
+
