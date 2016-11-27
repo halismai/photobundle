@@ -41,6 +41,16 @@ class PhotometricBundleAdjustment
      * the ZNCC score which is [-1, 1] */
     double minScore = 0.75;
 
+    enum class DescriptorType
+    {
+      Intensity,
+      IntensityAndGradient,
+      BitPlanes
+    };
+
+    /** type of the patch/descriptor */
+    DescriptorType descriptorType;
+
     Options() {}
 
    private:
@@ -109,7 +119,7 @@ class PhotometricBundleAdjustment
   /** removes scene points whose frame id == id */
   ScenePointPointerList removePointsAtFrame(uint32_t id);
 
-  struct DescriptorFrame;
+  class DescriptorFrame;
   typedef UniquePointer<DescriptorFrame>                 DescriptorFramePointer;
   typedef boost::circular_buffer<DescriptorFramePointer> DescriptorFrameBuffer;
 

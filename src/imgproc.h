@@ -8,9 +8,9 @@
  * central difference image gradient
  */
 void imgradient(const uint8_t* src, const ImageSize&, float* Ix, float* Iy);
+void imgradient(const float* src, const ImageSize&, float* Ix, float *Iy);
 
-void imgradientParallel(const uint8_t* src, const ImageSize&, float* Ix, float* Iy);
-
+void computeBitPlanes(const Image_<uint8_t>&, EigenAlignedContainer_<Image_<float>>& dst);
 
 template <typename T> static inline constexpr
 T imgradient_scale(typename std::enable_if<std::is_integral<T>::value>::type* = 0)

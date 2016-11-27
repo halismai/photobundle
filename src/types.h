@@ -15,6 +15,9 @@ using Vec_ = Eigen::Matrix<T,M,1>;
 template <typename T, int N = Eigen::Dynamic>
 using RowVec_ = Eigen::Matrix<T,1,N>;
 
+template <typename T>
+using Image_ = Eigen::Matrix<T,Eigen::Dynamic,Eigen::Dynamic,Eigen::RowMajor>;
+
 typedef Mat_<double,3,3> Mat33;
 typedef Mat_<double,4,4> Mat44;
 typedef Mat_<double,3,4> Mat34;

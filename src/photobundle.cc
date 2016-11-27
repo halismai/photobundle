@@ -2,9 +2,11 @@
 #include <ceres/rotation.h>
 
 #include "types.h"
+#include "imgproc.h"
 #include "photobundle.h"
 #include "sample_eigen.h"
 
+#include <cassert>
 #include <cmath>
 #include <type_traits>
 #include <iterator>
@@ -19,6 +21,159 @@
 #include <omp.h>
 #endif
 
+/**
+ * simple class to store the image gradient
+ */
+class ImageGradient
+{
+ public:
+  typedef Image_<float> ImageT;
+
+ public:
+  ImageGradient() = default;
+  ImageGradient(const ImageT& Ix, const ImageT& Iy)
+      : _Ix(Ix), _Iy(Iy) {}
+
+  inline const ImageT& Ix() const { return _Ix; }
+  inline const ImageT& Iy() const { return _Iy; }
+
+  inline ImageT absGradientMag() const
+  {
+    return _Ix.array().abs() + _Iy.array().abs();
+  }
+
+  template <class InputImage>
+  inline void compute(const InputImage& I)
+  {
+    static_assert(std::is_same<typename InputImage::Scalar, uint8_t>::value ||
+                  std::is_same<typename InputImage::Scalar, float>::value,
+                  "type mismatch, input image must be uint8_t or float");
+
+    optResize(I.rows(), I.cols());
+    imgradient(I.data(), ImageSize(I.rows(), I.cols()), _Ix.data(), _Iy.data());
+  }
+
+ private:
+  ImageT _Ix;
+  ImageT _Iy;
+
+  void optResize(int rows, int cols)
+  {
+    if(_Ix.rows() != rows || _Ix.cols() != cols) {
+      _Ix.resize(rows, cols);
+      _Iy.resize(rows, cols);
+    }
+  }
+}; // ImageGradient
+
+
+class PhotometricBundleAdjustment::DescriptorFrame
+{
+ public:
+  typedef EigenAlignedContainer_<Image_<float>> Channels;
+  typedef EigenAlignedContainer_<ImageGradient> ImageGradientList;
+
+ public:
+  /**
+   * \param frame_id the frame number (unique per image)
+   * \param I        grayscale input image
+   * \param gx       list of x-gradients per channel
+   * \param gy       list of y-gradients per channel
+   */
+  inline DescriptorFrame(uint32_t frame_id, const Channels& channels)
+      : _frame_id(frame_id), _channels(channels)
+  {
+    assert( !_channels.empty() );
+
+    _max_rows = _channels[0].rows() - 1;
+    _max_cols = _channels[0].cols() - 1;
+
+    _gradients.resize( _channels.size() );
+    for(size_t i = 0; i < _channels.size(); ++i) {
+      _gradients[i].compute(_channels[i]);
+    }
+  }
+
+
+  DescriptorFrame(const DescriptorFrame&) = delete;
+  DescriptorFrame& operator=(const DescriptorFrame&) = delete;
+
+  inline uint32_t id() const { return _frame_id; }
+
+  inline bool operator<(const DescriptorFrame& other) const
+  {
+    return _frame_id < other._frame_id;
+  }
+
+  inline size_t numChannels() const { return _channels.size(); }
+
+  inline const Image_<float>& getChannel(size_t i) const
+  {
+    assert(i < _channels.size());
+    return _channels[i];
+  }
+
+  inline const ImageGradient& getChannelGradient(size_t i) const
+  {
+    assert(i < _gradients.size());
+    return _gradients[i];
+  }
+
+  /**
+   * \return true of point projects to the image
+   */
+  template <class ProjType> inline
+  bool isProjectionValid(const ProjType& x) const
+  {
+    return x[0] >= 0.0 && x[0] < _max_cols &&
+           x[1] >= 0.0 && x[1] < _max_rows;
+  }
+
+  void computeSaliencyMap(Image_<float>& smap) const
+  {
+    assert( !_gradients.empty() );
+
+    smap.array() = _gradients[0].absGradientMag();
+    for(size_t i = 1; i < _gradients.size(); ++i) {
+      smap.array() += _gradients[i].absGradientMag().array();
+    }
+  }
+
+
+ public:
+  static inline DescriptorFrame* Create(uint32_t id, const Image_<uint8_t>& image,
+                                        PhotometricBundleAdjustment::Options::DescriptorType type)
+  {
+    Channels channels;
+    switch(type) {
+      case PhotometricBundleAdjustment::Options::DescriptorType::Intensity:
+        channels.push_back( image.cast<Channels::value_type::Scalar>() );
+        break;
+      case PhotometricBundleAdjustment::Options::DescriptorType::IntensityAndGradient: {
+        channels.push_back( image.cast<Channels::value_type::Scalar>() );
+        channels.push_back( Image_<float>(image.rows(), image.cols()) );
+        channels.push_back( Image_<float>(image.rows(), image.cols()) );
+
+        imgradient(image.data(), ImageSize(image.rows(), image.cols()),
+                   channels[1].data(), channels[2].data());
+
+      } break;
+      case PhotometricBundleAdjustment::Options::DescriptorType::BitPlanes: {
+        computeBitPlanes(image, channels);
+      } break;
+    }
+
+    return new DescriptorFrame(id, channels);
+  }
+
+ private:
+  uint32_t _frame_id;
+  uint32_t _max_rows;
+  uint32_t _max_cols;
+
+  Channels _channels;
+  ImageGradientList _gradients;
+}; // DescriptorFrame
 
 /**
  * \return bilinearly interpolated pixel value at subpixel location (xf,yf)
@@ -97,7 +252,7 @@ void copyFixedPatch(Vec_<T, square<2*R+1>()>& dst, const ImageType& I,
 }
 
 template <int R, typename T = float>
-class ZnccPatch
+class ZnccPatch_
 {
   static_assert(std::is_floating_point<T>::value, "T must be floating point");
 
@@ -106,13 +261,13 @@ class ZnccPatch
   static constexpr int Dimension = (2*R+1) * (2*R+1);
 
  public:
-  inline ZnccPatch() {}
+  inline ZnccPatch_() {}
 
   template <class ImageType, class ProjType> inline
-  ZnccPatch(const ImageType& image, const ProjType& uv) { set(image, uv); }
+  ZnccPatch_(const ImageType& image, const ProjType& uv) { set(image, uv); }
 
   template <class ImageType, class ProjType> inline
-  const ZnccPatch& set(const ImageType& I, const ProjType& uv)
+  const ZnccPatch_& set(const ImageType& I, const ProjType& uv)
   {
     interpolateFixedPatch<R>(_data, I, uv, T(0.0), T(0.0));
     T mean = _data.array().sum() / (T) _data.size();
@@ -123,14 +278,14 @@ class ZnccPatch
   }
 
   template <class ImageType, class ProjType>
-  inline static ZnccPatch FromImage(const ImageType& I, const ProjType& p)
+  inline static ZnccPatch_ FromImage(const ImageType& I, const ProjType& p)
   {
-    ZnccPatch ret;
+    ZnccPatch_ ret;
     ret.set(I, p);
     return ret;
   }
 
-  inline T score(const ZnccPatch& other) const
+  inline T score(const ZnccPatch_& other) const
   {
     T d = _norm * other._norm;
     return d > 1e-6 ? _data.dot(other._data) / d : -1.0;
@@ -153,7 +308,7 @@ struct PhotometricBundleAdjustment::ScenePoint
 
   typedef std::vector<uint32_t>        VisibilityList;
   typedef EigenAlignedContainer_<Vec2> ProjectionList;
-  typedef ZnccPatch<2, float>          ZnccPatchType;
+  typedef ZnccPatch_<2, float>         ZnccPatchType;
 
   /**
    * Create a scene point with position 'X' and reference frame number 'f_id'
@@ -228,10 +383,6 @@ struct PhotometricBundleAdjustment::ScenePoint
 
   Vec_<int,2> _x;
 }; // ScenePoint
-
-struct PhotometricBundleAdjustment::DescriptorFrame
-{
-}; // DescriptorFrame
 
 
 PhotometricBundleAdjustment::PhotometricBundleAdjustment(

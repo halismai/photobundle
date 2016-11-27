@@ -6,33 +6,26 @@
 #include <tbb/parallel_for.h>
 #endif
 
-void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
+/**
+ * comptue the image gradient for a row of pixels in the image
+ */
+template <typename TSrc, typename TDst> inline
+void imgradient_row(const TSrc* srow, int cols, TDst* Ix_row, TDst* Iy_row)
 {
-  auto rows = im_size.rows;
-  auto cols = im_size.cols;
+  static_assert( std::is_signed<TDst>::value, "imgradient destination type must be signed" );
 
-  memset(Ix_ptr, 0.0, sizeof(float) * cols);
-  memset(Iy_ptr, 0.0, sizeof(float) * cols);
+  constexpr auto S = imgradient_scale<TDst>();
 
-  for(int y = 1; y < rows - 1; ++y)
-  {
-    auto srow = src_ptr + y*cols;
-    auto Ix_row = Ix_ptr + y*cols;
-    auto Iy_row = Iy_ptr + y*cols;
+  Ix_row[0] = TDst(0);
+  Iy_row[0] = TDst(0);
 
-    Ix_row[0] = 0.0f;
-    Iy_row[0] = 0.0f;
-    for(int x = 1; x < cols - 1; ++x)
-    {
-      Ix_row[x] = 0.5f * ((float) srow[x+1] - (float) srow[x-1]);
-      Iy_row[x] = 0.5f * ((float) srow[x+cols] - (float) srow[x-cols]);
-    }
-    Ix_row[cols-1] = 0.0f;
-    Iy_row[cols-1] = 0.0f;
+  for(int x = 1; x < cols - 1; ++x) {
+    Ix_row[x] = S * (TDst(srow[x+1]) - TDst(srow[x-1]));
+    Iy_row[x] = S * (TDst(srow[x+cols]) - TDst(srow[x-cols]));
   }
 
-  memset(Ix_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
-  memset(Iy_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
+  Ix_row[cols-1] = TDst(0);
+  Iy_row[cols-1] = TDst(0);
 }
 
 #if defined(WITH_TBB)
@@ -49,15 +42,7 @@ struct ImageGradientFunc
       auto Ix_row = _Ix + y*_cols;
       auto Iy_row = _Iy + y*_cols;
 
-      Ix_row[0] = 0.0f;
-      Iy_row[0] = 0.0f;
-      for(int x = 1; x < _cols - 1; ++x)
-      {
-        Ix_row[x] = 0.5f * ((float) srow[x+1] - (float) srow[x-1]);
-        Iy_row[x] = 0.5f * ((float) srow[x+_cols] - (float) srow[x-_cols]);
-      }
-      Ix_row[_cols-1] = 0.0;
-      Iy_row[_cols-1] = 0.0;
+      imgradient_row(srow, _cols, Ix_row, Iy_row);
     }
   }
 
@@ -70,20 +55,25 @@ struct ImageGradientFunc
 #endif
 
 
-void imgradientParallel(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
+void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
 {
-#if defined(WITH_TBB)
   auto rows = im_size.rows;
   auto cols = im_size.cols;
 
   memset(Ix_ptr, 0.0, sizeof(float) * cols);
   memset(Iy_ptr, 0.0, sizeof(float) * cols);
 
+#if defined(WITH_TBB)
   tbb::parallel_for(tbb::blocked_range<int>(1, rows-1), ImageGradientFunc(src_ptr, cols, Ix_ptr, Iy_ptr));
-
+#else
+  for(int y = 1; y < rows - 1; ++y) {
+    auto srow = src_ptr + y*cols;
+    auto Ix_row = Ix_ptr + y*cols;
+    auto Iy_row = Iy_ptr + y*cols;
+    imgradient_row(srow, cols, Ix_row, Iy_row);
+  }
+#endif
   memset(Ix_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
   memset(Iy_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
-#else
-  imgradient(src_ptr, im_size, Ix_ptr, Iy_ptr);
-#endif
 }
+

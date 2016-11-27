@@ -23,11 +23,11 @@ int main()
   std::vector<float> Ix(image.size());
   std::vector<float> Iy(image.size());
 
-  auto t1 = TimeCode(N, imgradient, image.data(), im_size, Ix.data(), Iy.data());
+  auto t1 = TimeCode(N, imgradient<uint8_t>, image.data(), im_size, Ix.data(), Iy.data());
   printf("t1: %f\n", t1);
 
-  auto t2 = TimeCode(N, imgradientParallel, image.data(), im_size, Ix.data(), Iy.data());
-  printf("t2: %f\n", t2);
+  /*auto t2 = TimeCode(N, imgradientParallel, image.data(), im_size, Ix.data(), Iy.data());
+  printf("t2: %f\n", t2);*/
 
   return 0;
 }
