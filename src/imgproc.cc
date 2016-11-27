@@ -7,6 +7,16 @@
 #include <tbb/parallel_for.h>
 #endif
 
+#include <stdexcept>
+#include <cmath>
+
+#if defined(WITH_OPENCV)
+#include <opencv2/imgproc/imgproc.hpp>
+#endif
+
+#include <Eigen/Dense>
+
+
 /**
  * comptue the image gradient for a row of pixels in the image
  */
@@ -173,5 +183,33 @@ Image_<uint8_t> censusTransform(const Image_<uint8_t>& I, float sigma)
   memset(ret.data() + (ret.rows()-1)*ret.cols(), 0, ret.cols());
 
   return ret;
+}
+
+
+void imsmooth(const float* src, const ImageSize& im_size, int ks, double s, float* dst)
+{
+#if defined(WITH_OPENCV)
+  const cv::Mat src_(im_size.rows, im_size.cols, cv::DataType<float>::type, (void*) src);
+  cv::Mat dst_(im_size.rows, im_size.cols, cv::DataType<float>::type, (void*) dst);
+
+  cv::GaussianBlur(src_f, dst_, cv::Size(ks, ks), s, s);
+#else
+#error "compile WITH_OPENCV"
+#endif
+
+}
+
+void imsmooth(const uint8_t* src, const ImageSize& im_size, int ks, double s, float* dst)
+{
+#if defined(WITH_OPENCV)
+  const cv::Mat src_(im_size.rows, im_size.cols, cv::DataType<uint8_t>::type, (void*) src);
+  cv::Mat src_f;
+  src_.convertTo(src_f, CV_32F);
+
+  imsmooth(src_f.ptr<const float>(), im_size, ks, s, dst);
+
+#else
+#error "compile WITH_OPENCV"
+#endif
 }
 

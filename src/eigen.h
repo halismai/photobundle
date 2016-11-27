@@ -3,6 +3,16 @@
 
 #include "types.h"
 
+#if defined(WITH_OPENCV)
+#include <opencv2/core/core.hpp>
+
+template <typename TDst>
+Image_<TDst> cv2eigenMap(const cv::Mat& I)
+{
+  return Image_<TDst>::Map(I.data, I.rows, I.cols);
+}
+#endif
+
 /**
  * Normalizes a vector by dividing with the last coordinate
  */

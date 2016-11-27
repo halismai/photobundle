@@ -10,13 +10,25 @@
 void imgradient(const uint8_t* src, const ImageSize&, float* Ix, float* Iy);
 void imgradient(const float* src, const ImageSize&, float* Ix, float *Iy);
 
+
+/**
+ * Gaussian smoothing
+ */
+void imsmooth(const uint8_t* src, const ImageSize&, int kernel_size, double sigma, float* dst);
+void imsmooth(const float* src, const ImageSize&, int kernel_size, double sigma, float* dst);
+//void imsmooth(const Image_<float>& src, int size, double sigma, Image_<float>& dst);
+
 /**
  * census transform
  */
 Image_<uint8_t> censusTransform(const Image_<uint8_t>& I, float sigma = -1.0);
 
 
-void computeBitPlanes(const Image_<uint8_t>&, EigenAlignedContainer_<Image_<float>>& dst);
+/**
+ * bitplanes
+ */
+void computeBitPlanes(const Image_<uint8_t>&, EigenAlignedContainer_<Image_<float>>& dst,
+                      float sigma_ct = 1.0, float sigma_bp = 1.5);
 
 template <typename T> static inline constexpr
 T imgradient_scale(typename std::enable_if<std::is_integral<T>::value>::type* = 0)

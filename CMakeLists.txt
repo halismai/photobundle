@@ -42,7 +42,7 @@ list(APPEND MY_LIBRARIES ${CERES_LIBRARIES})
 
 find_package(TBB QUIET)
 find_package(OpenMP QUIET)
-find_package(OpenCV QUIET)
+find_package(OpenCV REQUIRED)
 
 if(TBB_FOUND AND WITH_TBB)
   include_directories(${TBB_INCLUDE_DIRS})
@@ -50,7 +50,7 @@ if(TBB_FOUND AND WITH_TBB)
   add_definitions(-DWITH_TBB)
 endif()
 
-if(OPENCV_FOUND AND WITH_OPENCV)
+if(OpenCV_FOUND AND WITH_OPENCV)
   include_directories(${OpenCV_INCLUDE_DIRS})
   list(APPEND MY_LIBRARIES ${OpenCV_LIBS})
   add_definitions(-DWITH_OPENCV)
