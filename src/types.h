@@ -62,6 +62,11 @@ struct ImageSize
   inline ImageSize(int r = 0, int c = 0)
   : rows(r), cols(c) {}
 
+  inline int numel() const { return rows*cols; }
+  inline int area() const { return numel(); }
+
+  inline bool empty() const { return 0 == numel(); }
+
  private:
   friend std::ostream& operator<<(std::ostream&, const ImageSize&);
 }; // ImageSize

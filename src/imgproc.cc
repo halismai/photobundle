@@ -14,6 +14,8 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #endif
 
+#include <smmintrin.h>
+
 #include <Eigen/Dense>
 
 
@@ -40,9 +42,10 @@ void imgradient_row(const TSrc* srow, int cols, TDst* Ix_row, TDst* Iy_row)
 }
 
 #if defined(WITH_TBB)
-struct ImageGradientFunc
+template <typename TSrc>
+struct ImageGradientFunc_
 {
-  ImageGradientFunc(const uint8_t* src_ptr, int cols, float* Ix_ptr, float* Iy_ptr)
+  ImageGradientFunc_(const TSrc* src_ptr, int cols, float* Ix_ptr, float* Iy_ptr)
       : _src(src_ptr), _cols(cols), _Ix(Ix_ptr), _Iy(Iy_ptr) {}
 
   void operator()(const tbb::blocked_range<int>& range) const
@@ -58,15 +61,15 @@ struct ImageGradientFunc
   }
 
  private:
-  const uint8_t* _src;
+  const TSrc* _src;
   int _cols;
   float* _Ix;
   float* _Iy;
 }; // ImageGradientFunc
 #endif
 
-
-void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
+template <typename TSrc = uint8_t> inline
+void imgradient_(const TSrc* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
 {
   auto rows = im_size.rows;
   auto cols = im_size.cols;
@@ -75,7 +78,8 @@ void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr,
   memset(Iy_ptr, 0.0, sizeof(float) * cols);
 
 #if defined(WITH_TBB)
-  tbb::parallel_for(tbb::blocked_range<int>(1, rows-1), ImageGradientFunc(src_ptr, cols, Ix_ptr, Iy_ptr));
+  tbb::parallel_for(tbb::blocked_range<int>(1, rows-1),
+                    ImageGradientFunc_<TSrc>(src_ptr, cols, Ix_ptr, Iy_ptr));
 #else
   for(int y = 1; y < rows - 1; ++y) {
     auto srow = src_ptr + y*cols;
@@ -87,6 +91,18 @@ void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr,
   memset(Ix_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
   memset(Iy_ptr + (rows-1)*cols, 0.0f, sizeof(float) * cols);
 }
+
+
+void imgradient(const uint8_t* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
+{
+  imgradient_(src_ptr, im_size, Ix_ptr, Iy_ptr);
+}
+
+void imgradient(const float* src_ptr, const ImageSize& im_size, float* Ix_ptr, float* Iy_ptr)
+{
+  imgradient_(src_ptr, im_size, Ix_ptr, Iy_ptr);
+}
+
 
 using bpvo::v128;
 
@@ -226,7 +242,6 @@ void computeBitPlanes(const uint8_t* image, const ImageSize& im_size,
   }
 }
 
-
 void imsmooth(const float* src, const ImageSize& im_size, int ks, double s, float* dst)
 {
 #if defined(WITH_OPENCV)
@@ -252,5 +267,55 @@ void imsmooth(const uint8_t* src, const ImageSize& im_size, int ks, double s, fl
 #else
 #error "compile WITH_OPENCV"
 #endif
+}
+
+template <typename T, size_t A = 16>
+static bool inline is_aligned(const T* p)
+{
+  return 0 == (std::ptrdiff_t(p) & (A-1));
+}
+
+void disparityToDepth(const float* dmap, const ImageSize& im_size, float Bf, float* zmap)
+{
+  constexpr float MinValidDisparity = 0.01f;
+  constexpr float InvalidDepthMark  = -.10f;
+
+  const auto MD = _mm_set1_ps(MinValidDisparity);
+  const auto IV = _mm_set1_ps(InvalidDepthMark);
+  const auto BF = _mm_set1_ps(Bf);
+
+  const auto N = im_size.numel();
+  int i = 0;
+
+
+  if(is_aligned(dmap) && is_aligned(zmap)) {
+#if defined(WITH_OPENMP)
+#pragma omp parallel for
+#endif
+    for(i = 0; i <= N - 4; i += 4) {
+      auto d = _mm_load_ps(dmap + i);
+      auto m = _mm_cmpgt_ps(d, MD);
+      auto z = _mm_mul_ps(BF, _mm_rcp_ps(d));
+      auto zz = _mm_blendv_ps(IV, z, m);
+      _mm_store_ps(zmap + i, zz);
+    }
+  } else {
+#if defined(WITH_OPENCV)
+#pragma omp parallel for
+#endif
+    for(i = 0; i <= N - 4; i += 4) {
+      auto d = _mm_loadu_ps(dmap + i);
+      auto m = _mm_cmpgt_ps(d, MD);
+      auto z = _mm_mul_ps(BF, _mm_rcp_ps(d));
+      auto zz = _mm_blendv_ps(IV, z, m);
+      _mm_storeu_ps(zmap + i, zz);
+    }
+  }
+
+  if(N % 16) {
+    for(i = N-4; i < N; ++i) {
+      zmap[i] = dmap[i] > MinValidDisparity ? (Bf  * (1.0f / dmap[i])) : -1.0f;
+    }
+  }
 }
 

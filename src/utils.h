@@ -22,6 +22,11 @@
 
 #include "debug.h"
 
+namespace std {
+inline std::string to_string(std::string s) { return s; }
+}; // std
+
+
 namespace utils {
 
 /** case insenstive string comparision */

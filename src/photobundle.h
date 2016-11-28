@@ -11,6 +11,10 @@
 
 #include <boost/circular_buffer.hpp>
 
+namespace utils {
+class ConfigFile;
+};  // utils
+
 class PhotometricBundleAdjustment
 {
  public:
@@ -63,6 +67,8 @@ class PhotometricBundleAdjustment
     DescriptorType descriptorType;
 
     Options() {}
+
+    Options(const utils::ConfigFile& cf);
 
    private:
     friend std::ostream& operator<<(std::ostream&, const Options&);

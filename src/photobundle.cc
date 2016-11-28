@@ -6,6 +6,7 @@
 #include "imgproc.h"
 #include "photobundle.h"
 #include "sample_eigen.h"
+#include "utils.h"
 
 #include <cassert>
 #include <cmath>
@@ -23,6 +24,36 @@
 #endif
 
 #include <Eigen/Geometry>
+
+PhotometricBundleAdjustment::Options::DescriptorType
+DescriptorTypeFromString(std::string s)
+{
+  if(utils::icompare("Intensity", s))
+    return PhotometricBundleAdjustment::Options::DescriptorType::Intensity;
+  else if(utils::icompare("IntensityAndGradient", s))
+    return PhotometricBundleAdjustment::Options::DescriptorType::IntensityAndGradient;
+  else if(utils::icompare("BitPlanes", s))
+    return PhotometricBundleAdjustment::Options::DescriptorType::BitPlanes;
+  else {
+    Warn("Unknown descriptorType '%s'\n", s.c_str());
+    return PhotometricBundleAdjustment::Options::DescriptorType::Intensity;
+  }
+}
+
+
+PhotometricBundleAdjustment::Options::Options(const utils::ConfigFile& cf)
+  : maxNumPoints(cf.get<int>("maxNumPoints", 4096)),
+    slidingWindowSize(cf.get<int>("slidingWindowSize", 5)),
+    patchRadius(cf.get<int>("patchRadius", 2)),
+    maskBlockRadius(cf.get<int>("maskBlockRadius", 1)),
+    maxFrameDistance(cf.get<int>("maxFrameDistance", 1)),
+    numThreads(cf.get<int>("numThreads", -1)),
+    doGaussianWeighting((bool) cf.get<int>("doGaussianWeighting", 0)),
+    verbose((bool) cf.get<int>("verbose", 1)),
+    minScore(cf.get<double>("minScore", 0.75)),
+    robustThreshold(cf.get<double>("robustThreshold", 0.05)),
+    descriptorType(DescriptorTypeFromString(cf.get<std::string>("descriptorType", "Intensity")))
+{}
 
 /**
  * simple class to store the image gradient
@@ -483,7 +514,7 @@ addFrame(const uint8_t* I_ptr, const float* Z_ptr, const Mat44& T, Result* resul
   for(int y = B; y < max_rows; ++y) {
     for(int x = B; x < max_cols; ++x) {
       auto s = _saliency_map(y,x);
-      if(_mask(y,x) == 1 && s > 0.0f) {
+      if(_mask(y,x) == 1 && s > 0.0f && Z(y,x) > 0.0) {
         // check if the saliency is a local maxima
         auto is_local_max =
             s > _saliency_map(y-1, x-1) && s > _saliency_map(y-1,x) && s > _saliency_map(y-1,x+1) &&
@@ -771,6 +802,11 @@ void PhotometricBundleAdjustment::optimize(Result* result)
   ceres::Solve(GetSolverOptions(num_threads, _options.verbose), &problem, &summary);
   if(_options.verbose)
     std::cout << summary.FullReport() << std::endl;
+
+  //
+  // TODO: run another optimization pass over residuals with small error
+  // (eliminate the outliers)
+  //
 
   //
   // put back the refined camera poses

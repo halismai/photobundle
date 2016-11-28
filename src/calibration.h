@@ -31,6 +31,9 @@ class Calibration
   inline const Mat33& K() const { return _K; }
   inline const Mat33& Kinv() const { return _K_inv; }
 
+  inline Mat33& K() { return _K; }
+  inline double& baseline() { return _baseline; }
+
   template <typename T> inline
   void project(const T* X, T& u, T& v) const
   {

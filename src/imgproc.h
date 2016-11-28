@@ -16,7 +16,19 @@ void imgradient(const float* src, const ImageSize&, float* Ix, float *Iy);
  */
 void imsmooth(const uint8_t* src, const ImageSize&, int kernel_size, double sigma, float* dst);
 void imsmooth(const float* src, const ImageSize&, int kernel_size, double sigma, float* dst);
-//void imsmooth(const Image_<float>& src, int size, double sigma, Image_<float>& dst);
+
+/**
+ * converts a disparity image to depth
+ *
+ * Invalid disparities are <= 0
+ * Invalid depth will be <= 0 as well
+ *
+ * \param dmap pointer to the disparity map
+ * \param im_size the image size
+ * \param Bf the steroe baseline * the focal length (in pixels)
+ * \param depth output depth
+ */
+void disparityToDepth(const float* dmap, const ImageSize& im_size, float Bf, float* depth);
 
 
 /**
