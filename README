@@ -1,0 +1,64 @@
+                             P H O T O  B U N D L E
+
+This is the source code for
+H. Alismail, B. Browning, and S. Lucey,
+``Photometric Bundle Adjustment for Vision-Based SLAM,'' ACCV 2016
+
+See additional information here as well:
+https://www.cs.cmu.edu/~halismai/h_alismail_robotics_2016.pdf
+
+
+                                  INSTALLATION
+
+The code is tested on Linux (Debian, g++-4.9 and kernel 3.16.0-4-amd64)
+
+Required packages:
+- opencv
+- ceres
+- eigen3
+- boost (program_options and filesystem)
+- TBB [optional]
+
+
+                                     USAGE
+
+See the example code in apps/run_kitti.cc
+The code is meant to be used as refinement on initial pose results obtained with
+a visual odometry, or VSLAM system.
+
+IMPORTANT: pose initialization is the *local* frame--frame pose. The code
+returns the refined poses in the *global/cumulative* coordinate frame.
+
+
+                                      TODO
+
+The code is a research base and is very rough around the edges. It currently
+does not run in real-time, but there are various possible improvements that
+should improve the speed, which include:
+
+- Pyramid implementation
+
+- Refactoring the DescriptorError function to create a CostFunction per image
+instead of per point. The current implementation (an objective per point) is
+very inefficient due to thrashing the cache
+
+- In addition to refactoring, implementing the CostFunction with an analytic
+Jacobian should significantly improve performance. The current implementation
+relies on ceres' automatic differentiation facilities which limit any
+possibilities of exploiting SIMD instructions for a more efficient
+implementation (the bottleneck is in patch interpolation)
+
+
+There are also opportunities for improving the accuracy. These include:
+- Proper selection of the characteristic scale of the Loss function
+- Better pixel selection:
+  - By selecting the smallest number of points sufficient to produce pose
+  estimates robustly
+  - By selecting the *best* points to constrain the solution
+
+
+If you have questions/thoughts please contact me
+
+Thu Dec  1 00:13:44 EST 2016
+Hatem Alismail <hatem.alismail @ gmail>
+
