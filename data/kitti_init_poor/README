@@ -1,0 +1,2 @@
+Pose initialization for KITTI with poor accuracy (obtained via a frame-frame)
+visual odometry without multi-frame refinement or loop closure
