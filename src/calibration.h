@@ -3,9 +3,6 @@
 
 #include "types.h"
 #include "eigen.h"
-#include <iostream>
-
-#include <Eigen/LU>
 
 /**
  * Stereo calibration using a pinhole model
@@ -20,7 +17,7 @@ class Calibration
    * \param b the stereo baseline
    */
   inline Calibration(const Mat33& K, double b)
-      : _K(K), _K_inv(_K.inverse()), _baseline(b) {}
+      : _K(K), _baseline(b) {}
 
   inline const double& b() const { return _baseline; }
   inline const double& fx() const { return _K(0,0); }
@@ -29,7 +26,6 @@ class Calibration
   inline const double& cy() const { return _K(1,2); }
 
   inline const Mat33& K() const { return _K; }
-  inline const Mat33& Kinv() const { return _K_inv; }
 
   inline Mat33& K() { return _K; }
   inline double& baseline() { return _baseline; }
@@ -65,8 +61,25 @@ class Calibration
         0.0, 0.0, 1.0;
   }
 
+  inline void scale(double s)
+  {
+    if(s > 1.0) {
+      _K *= (1.0 / s); _K(2,2) = 1.0;
+      _baseline *= s;
+    }
+  }
+
+  inline Calibration pyrDown() const
+  {
+    Mat33 K(_K);
+    K *= 0.5; K(2,2) = 1.0;
+
+    return Calibration(K, _baseline * 2);
+  }
+
+
  private:
-  Mat33 _K, _K_inv;
+  Mat33 _K;
   double _baseline;
 }; // Calibration
 

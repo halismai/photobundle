@@ -2,10 +2,14 @@
 #include "stereo_algorithm.h"
 #include "calibration.h"
 #include "utils.h"
+#include "imgproc.h"
 
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/contrib/contrib.hpp>
+
+#include <fstream>
+#include <Eigen/LU>
 
 void colorizeDisparity(const cv::Mat& src, cv::Mat& dst, double min_d, double num_d)
 {
@@ -78,6 +82,25 @@ int main(int argc, char** argv)
       break;
   }
 
+  auto calib = dataset->calibration();
+
+  std::vector<float> z( dataset->imageSize().numel() );
+
+  disparityToDepth(frame->disparity().ptr<float>(), dataset->imageSize(),
+                   calib.baseline() * calib.fx(), z.data());
+
+  Mat33 K_inv = calib.K().inverse();
+  std::ofstream ofs("X");
+  for(int y = 0, i = 0; y < frame->disparity().rows; ++y) {
+    for(int x = 0; x < frame->disparity().cols; ++x, ++i) {
+      if(z[i] > 0.0 && z[i] < 10.0) {
+        Vec_<double,3> X = z[i] * K_inv * Vec_<double,3>(x, y, 1.0);
+        ofs << X.transpose() << "\n";
+      }
+    }
+  }
+
   return 0;
 }
+
 

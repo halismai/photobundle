@@ -67,6 +67,11 @@ struct ImageSize
 
   inline bool empty() const { return 0 == numel(); }
 
+  inline ImageSize pyrDown() const
+  {
+    return ImageSize((rows + 1) / 2, (cols + 1) / 2);
+  }
+
  private:
   friend std::ostream& operator<<(std::ostream&, const ImageSize&);
 }; // ImageSize

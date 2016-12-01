@@ -11,6 +11,7 @@
 
 #include <boost/circular_buffer.hpp>
 
+
 namespace utils {
 class ConfigFile;
 };  // utils
@@ -55,6 +56,15 @@ class PhotometricBundleAdjustment
 
     /** threshold to use for a HuberLoss (if > 0) */
     double robustThreshold = 0.05;
+
+    /** minimum depth to use */
+    double minValidDepth = 0.01;
+
+    /** maximum depth to use */
+    double maxValidDepth = 1000.0;
+
+    /** non-maxima suppression radius for pixel selection */
+    int nonMaxSuppRadius = 1;
 
     enum class DescriptorType
     {
@@ -105,6 +115,25 @@ class PhotometricBundleAdjustment
      * iterationSummary.size() is the total number of iterations
      */
     std::vector<ceres::IterationSummary> iterationSummary;
+
+    /**
+     * Writes detailed results to a file in a binary format
+     *
+     * Requires cereal library
+     */
+    struct Writer
+    {
+      Writer(std::string prefix = "./")
+          : _counter(0), _prefix(prefix) {}
+
+      bool add(const Result&);
+
+     private:
+      int _counter;
+      std::string _prefix;
+    }; // Writer
+
+    static Result FromFile(std::string);
 
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
   }; // Result
@@ -162,6 +191,8 @@ class PhotometricBundleAdjustment
 
   Image_<uint16_t> _mask;
   Image_<float> _saliency_map;
+
+  Mat33 _K_inv;
 }; // PhotometricBundleAdjustment
 
 #endif // PHOTOBUNDLE_PHOTOBUNDLE_H

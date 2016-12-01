@@ -68,6 +68,7 @@ set(Boost_USE_STATIC_RUNTIME ON)
 find_package(Boost 1.59.0 REQUIRED COMPONENTS log system filesystem thread timer chrono program_options)
 add_definitions(${Boost_LIB_DIAGNOSTIC_DEFINITIONS})
 add_definitions(-DWITH_BOOST)
+add_definitions(-DWITH_SIMD)
 include_directories(${Boost_INCLUDE_DIRS})
 list(APPEND MY_LIBRARIES ${Boost_LIBRARIES})
 

@@ -4,6 +4,11 @@
 #include "types.h"
 #include <type_traits>
 
+namespace cv {
+class Mat;
+template <typename T> class Mat_;
+}; //cv
+
 /**
  * central difference image gradient
  */
@@ -29,6 +34,8 @@ void imsmooth(const float* src, const ImageSize&, int kernel_size, double sigma,
  * \param depth output depth
  */
 void disparityToDepth(const float* dmap, const ImageSize& im_size, float Bf, float* depth);
+
+void disparityToDepth(const cv::Mat& disparity, double Bf, cv::Mat_<float>& depth);
 
 
 /**
@@ -165,19 +172,28 @@ imgradientAbsMag(const Eigen::DenseBase<Derived>& A)
 }
 
 
-template <class Image>
-class IsLocalMax
+template <class Image, class Mask>
+class IsLocalMax_
 {
+  typedef typename Image::Scalar T;
+
  public:
-  IsLocalMax(const Image& image, int radius)
-      : _I(image), _radius(radius) {}
+  IsLocalMax_(const Image& image, const Mask& mask, int radius, T min_saliency = T(0))
+      : _I(image), _mask(mask), _radius(radius), _min_saliency(min_saliency)
+  {
+    assert( _I.rows() == _mask.rows() && _I.cols() == _mask.cols() &&
+           "image and mask must have the same size");
+  }
 
   inline bool operator()(int row, int col) const
   {
     if(_radius > 0) {
       auto v = _I(row, col);
-      for(int c = -_radius; c <= _radius; ++c) {
-        for(int r = -_radius; r <= _radius; ++r) {
+      if(!_mask(row, col) || v < _min_saliency)
+        return false;
+
+      for(int r = -_radius; r <= _radius; ++r) {
+        for(int c = -_radius; c <= _radius; ++c) {
           if(!(!r && !c) && _I(r,c) >= v) {
             return false;
           }
@@ -190,7 +206,9 @@ class IsLocalMax
 
  private:
   const Image& _I;
+  const Mask& _mask;
   int _radius;
+  T _min_saliency;
 }; // IsLocalMax
 
 

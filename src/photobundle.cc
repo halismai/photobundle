@@ -8,6 +8,14 @@
 #include "sample_eigen.h"
 #include "utils.h"
 
+#if defined(WITH_CEREAL)
+#include "ceres_cereal.h"
+#include "eigen_cereal.h"
+#include <fstream>
+#include <cereal/archives/binary.hpp>
+#include <cereal/types/memory.hpp>
+#endif
+
 #include <cassert>
 #include <cmath>
 #include <type_traits>
@@ -25,7 +33,7 @@
 
 #include <Eigen/Geometry>
 
-PhotometricBundleAdjustment::Options::DescriptorType
+static PhotometricBundleAdjustment::Options::DescriptorType
 DescriptorTypeFromString(std::string s)
 {
   if(utils::icompare("Intensity", s))
@@ -40,6 +48,42 @@ DescriptorTypeFromString(std::string s)
   }
 }
 
+PhotometricBundleAdjustment::Result
+PhotometricBundleAdjustment::Result::FromFile(std::string filename)
+{
+#if defined(WITH_CEREAL)
+  std::ifstream ifs(filename);
+  if(ifs.is_open()) {
+    cereal::BinaryInputArchive ar(ifs);
+    Result ret;
+    ar(ret);
+    return ret;
+  } else {
+    Fatal("Failed to open %s\n", filename.c_str());
+  }
+#else
+  UNUSED(filename);
+  Fatal("compile WITH_CEREAL\n");
+#endif
+}
+
+bool PhotometricBundleAdjustment::Result::Writer::add(const Result& result)
+{
+  bool ret = false;
+
+#if defined(WITH_CEREAL)
+  std::ofstream ofs(utils::Format("%s/%05d.out", _prefix.c_str(), _counter++));
+  if(ofs.is_open()) {
+    cereal::BinaryOutputArchive ar(ofs);
+    ar(result);
+    ret = true;
+  }
+#else
+  utils::UNUSED(result);
+#endif
+
+  return ret;
+}
 
 PhotometricBundleAdjustment::Options::Options(const utils::ConfigFile& cf)
   : maxNumPoints(cf.get<int>("maxNumPoints", 4096)),
@@ -52,6 +96,9 @@ PhotometricBundleAdjustment::Options::Options(const utils::ConfigFile& cf)
     verbose((bool) cf.get<int>("verbose", 1)),
     minScore(cf.get<double>("minScore", 0.75)),
     robustThreshold(cf.get<double>("robustThreshold", 0.05)),
+    minValidDepth(cf.get<double>("minValidDepth", 0.01)),
+    maxValidDepth(cf.get<double>("maxValidDepth", 1000.0)),
+    nonMaxSuppRadius(cf.get<int>("nonMaxSuppRadius", 1)),
     descriptorType(DescriptorTypeFromString(cf.get<std::string>("descriptorType", "Intensity")))
 {}
 
@@ -256,34 +303,14 @@ void interpolateFixedPatch(Vec_<T, square<2*R+1>()>& dst,
   const T x = static_cast<T>( p[0] + offset );
   const T y = static_cast<T>( p[1] + offset );
 
-  for(int c = -R, i=0; c <= R; ++c) { // NOTE: this does col-major
-    const T xf = x + static_cast<T>(c);
-    for(int r = -R; r <= R; ++r, ++i) {
-      const T yf = y + static_cast<T>(r);
-      dst[i] = interp2(I, xf, yf, fillval);
+  auto d_ptr = dst.data();
+  for(int r = -R; r <= R; ++r) {
+    for(int c = -R; c <= R; ++c) {
+      *d_ptr++ = interp2(I, c + x, r + y, fillval);
     }
   }
 }
 
-
-template <int R, class ImageType, class ProjType, typename T = double>
-void copyFixedPatch(Vec_<T, square<2*R+1>()>& dst, const ImageType& I,
-                    const ProjType& p)
-{
-  const int x = static_cast<int>( std::round( p[0] ) );
-  const int y = static_cast<int>( std::round( p[1] ) );
-
-  int max_cols = I.cols() - 1;
-  int max_rows = I.rows() - 1;
-
-  for(int c = -R, i=0; c <= R; ++c) {
-    int xf = std::max(R, std::min(x + c, max_cols));
-    for(int r = -R; r <= R; ++r, ++i) {
-      int yf = std::max(R, std::min(y + r, max_rows));
-      dst[i] = I(yf, xf);
-    }
-  }
-}
 
 template <int R, typename T = float>
 class ZnccPatch_
@@ -291,7 +318,7 @@ class ZnccPatch_
   static_assert(std::is_floating_point<T>::value, "T must be floating point");
 
  public:
-  static constexpr int Radius = R;
+  static constexpr int Radius    = R;
   static constexpr int Dimension = (2*R+1) * (2*R+1);
 
  public:
@@ -421,10 +448,13 @@ struct PhotometricBundleAdjustment::ScenePoint
 
 PhotometricBundleAdjustment::PhotometricBundleAdjustment(
     const Calibration& calib, const ImageSize& image_size, const Options& options)
-  : _calib(calib), _image_size(image_size), _options(options)
+  : _calib(calib), _image_size(image_size), _options(options),
+    _frame_buffer(options.slidingWindowSize)
 {
   _mask.resize(_image_size.rows, _image_size.cols);
   _saliency_map.resize(_image_size.rows, _image_size.cols);
+
+  _K_inv = calib.K().inverse();
 }
 
 PhotometricBundleAdjustment::~PhotometricBundleAdjustment() {}
@@ -440,10 +470,10 @@ void ExtractPatch(T* dst, const Image& I, const Vec_<int,2>& uv, int radius)
       max_rows = I.rows() - radius - 1;
 
   for(int r = -radius, i=0; r <= radius; ++r) {
-    int r_i = std::max(radius, std::min(uv[0] + r, max_cols));
+    int r_i = std::max(radius, std::min(uv[1] + r, max_rows));
     for(int c = -radius; c <= radius; ++c, ++i) {
-      int c_i = std::max(radius, std::min(uv[1] + c, max_rows));
-      dst[i] = I(r_i, c_i);
+      int c_i = std::max(radius, std::min(uv[0] + c, max_cols));
+      dst[i] = static_cast<T>( I(r_i, c_i) );
     }
   }
 }
@@ -472,13 +502,13 @@ addFrame(const uint8_t* I_ptr, const float* Z_ptr, const Mat44& T, Result* resul
        descriptor_dim = (int) frame->numChannels() * patch_length,
        mask_radius = _options.maskBlockRadius;
 
-  const auto& K_inv = _calib.Kinv();
-
   //
   // Establish "correspondences" with the old data. This is the visibility list
   // computation
   //
   _mask.setOnes();
+
+  int num_updated = 0, max_num_to_update = 0;
   for(size_t i = 0; i < _scene_points.size(); ++i) {
     const auto& pt = _scene_points[i];
     int f_dist = _frame_id - pt->lastFrameId();
@@ -486,16 +516,21 @@ addFrame(const uint8_t* I_ptr, const float* Z_ptr, const Mat44& T, Result* resul
       //
       // If the point projects to the current frame and it zncc score is
       // sufficiently highly, we'll add the current image to its visibility list
-      auto uv = _calib.project(T_c * pt->X());
-      auto r = std::round(uv[1]), c = std::round(uv[0]);
+      Vec2 uv = _calib.project(T_c * pt->X());
+      ++max_num_to_update;
+
+      int r = std::round(uv[1]), c = std::round(uv[0]);
       if(r >= B && r < max_rows && c >= B && c <= max_cols) {
-        auto score = pt->patch().score( {I, uv} );
+        typename ScenePoint::ZnccPatchType other_patch(I, uv);
+        auto score = pt->patch().score( other_patch );
         if(score > _options.minScore) {
+          num_updated++;
+
           // TODO update the patch for the new frame data
           pt->addFrame(_frame_id);
 
           //
-          // block an area in the mask to prevent initializting redandant new
+          // block an area in the mask to prevent initializing redandant new
           // scene points
           //
           for(int r_i = -mask_radius; r_i <= mask_radius; ++r_i)
@@ -506,28 +541,29 @@ addFrame(const uint8_t* I_ptr, const float* Z_ptr, const Mat44& T, Result* resul
     }
   }
 
+
   //
   // Add new scene points
   //
   decltype(_scene_points) new_scene_points;
+  new_scene_points.reserve( max_rows * max_cols * 0.5 );
   frame->computeSaliencyMap(_saliency_map);
+
+  typedef IsLocalMax_<decltype(_saliency_map), decltype(_mask)> IsLocalMax;
+  const IsLocalMax is_local_max(_saliency_map, _mask, _options.nonMaxSuppRadius);
+
   for(int y = B; y < max_rows; ++y) {
     for(int x = B; x < max_cols; ++x) {
-      auto s = _saliency_map(y,x);
-      if(_mask(y,x) == 1 && s > 0.0f && Z(y,x) > 0.0) {
-        // check if the saliency is a local maxima
-        auto is_local_max =
-            s > _saliency_map(y-1, x-1) && s > _saliency_map(y-1,x) && s > _saliency_map(y-1,x+1) &&
-            s > _saliency_map(y  , x-1) &&                             s > _saliency_map(y  ,x+1) &&
-            s > _saliency_map(y+1, x-1) && s > _saliency_map(y+1,x) && s > _saliency_map(y+1,x+1);
-        if(is_local_max) {
-          Vec3 X = T_w * (Z(y,x) * K_inv * Vec3(x, y, 1.0));
+      auto z = Z(y,x);
+      if(z >= _options.minValidDepth && z <= _options.maxValidDepth) {
+        if(is_local_max(y, x)) {
+          Vec3 X = T_w * (z * _K_inv * Vec3(x, y, 1.0));
+
           auto p = make_unique<ScenePoint>(X, _frame_id);
           Vec_<int,2> xy(x, y);
-
           p->setZnccPach( I, xy );
           p->descriptor().resize(descriptor_dim);
-          p->setSaliency( s );
+          p->setSaliency( _saliency_map(y,x) );
           p->setFirstProjection(xy);
 
           new_scene_points.push_back(std::move(p));
@@ -553,6 +589,10 @@ addFrame(const uint8_t* I_ptr, const float* Z_ptr, const Mat44& T, Result* resul
   //
   const int num_channels = frame->numChannels(),
         num_new_points = (int) new_scene_points.size();
+
+  Info("updated %d [%0.2f%%] max %d new %d\n",
+       num_updated, 100.0 * num_updated / _scene_points.size(),
+       max_num_to_update, num_new_points);
 
   for(int k = 0; k < num_channels; ++k) {
     const auto& channel = frame->getChannel(k);
@@ -583,10 +623,10 @@ MakePatchWeights(int radius, bool do_gaussian, double s_x = 1.0,
   if(do_gaussian) {
     std::vector<double> ret(n);
     double sum = 0.0;
-    for(int c = -radius, i = 0; c <= radius; ++c) {
-      const double d_c = (c*c) / s_x;
-      for(int r = -radius; r <= radius; ++r, ++i) {
-        const double d_r = (r*r) / s_y;
+    for(int r = -radius, i = 0; r <= radius; ++r) {
+      const double d_r = (r*r) / s_x;
+      for(int c = -radius; c <= radius; ++c, ++i) {
+        const double d_c = (c*c) / s_y;
         const double w = a * std::exp( -0.5 * (d_r + d_c) );
         ret[i] = w;
         sum += w;
@@ -671,10 +711,10 @@ class PhotometricBundleAdjustment::DescriptorError
       const auto& Gx = G.Ix();
       const auto& Gy = G.Iy();
 
-      for(int x = -_radius, j = 0; x <= _radius; ++x) {
-        const T u = u_w + T(x);
-        for(int y = -_radius; y <= _radius; ++y, ++i, ++j) {
-          const T v = v_w + T(y);
+      for(int y = -_radius, j = 0; y <= _radius; ++y) {
+        const T v = v_w + T(y);
+        for(int x = -_radius; x <= _radius; ++x, ++i, ++j) {
+          const T u = u_w + T(x);
           const T i0 = T(_p0[i]);
           const T i1 = SampleWithDerivative(I, Gx, Gy, u, v);
           residuals[i] = _patch_weights[j] * (i0 - i1);
@@ -686,20 +726,6 @@ class PhotometricBundleAdjustment::DescriptorError
     return true;
   }
 
-  template <class T> inline
-  Vec_<T,2> warpPoint(const T* const camera, const T* const point) const
-  {
-    T xw[3];
-    ceres::AngleAxisRotatePoint(camera, point, xw);
-    xw[0] += camera[3];
-    xw[1] += camera[4];
-    xw[2] += camera[5];
-
-    Vec_<T,2> ret;
-    _calib.project(xw, ret[0], ret[1]);
-
-    return ret;
-  }
 
  private:
   const int _radius;
@@ -789,7 +815,8 @@ void PhotometricBundleAdjustment::optimize(Result* result)
     }
   }
 
-  Info("Using %d points (%d residual blocks)\n", num_selected_points, problem.NumResidualBlocks());
+  Info("Using %d points (%d residual blocks) [id start %d]\n",
+       num_selected_points, problem.NumResidualBlocks(), frame_id_start);
 
   ceres::Solver::Summary summary;
 
@@ -850,17 +877,12 @@ void PhotometricBundleAdjustment::optimize(Result* result)
 
 auto PhotometricBundleAdjustment::getFrameAtId(uint32_t id) const -> const DescriptorFrame*
 {
-  const DescriptorFrame* ret = nullptr;
   for(const auto& f : _frame_buffer)
     if(f->id() == id) {
-      ret = f.get();
-      break;
+      return f.get();
     }
 
-  if(ret == nullptr)
-    throw std::runtime_error("could not find frame id!");
-
-  return ret;
+  throw std::runtime_error("could not find frame id!");
 }
 
 auto PhotometricBundleAdjustment::removePointsAtFrame(uint32_t id) -> ScenePointPointerList

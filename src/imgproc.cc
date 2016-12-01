@@ -18,6 +18,8 @@
 
 #include <Eigen/Dense>
 
+#include <opencv2/core/core.hpp>
+
 
 /**
  * comptue the image gradient for a row of pixels in the image
@@ -317,5 +319,13 @@ void disparityToDepth(const float* dmap, const ImageSize& im_size, float Bf, flo
       zmap[i] = dmap[i] > MinValidDisparity ? (Bf  * (1.0f / dmap[i])) : -1.0f;
     }
   }
+}
+
+void disparityToDepth(const cv::Mat& d, double bf, cv::Mat_<float>& z)
+{
+  assert( d.type() == cv::DataType<float>::type );
+  z.create(d.size());
+
+  disparityToDepth(d.ptr<const float>(), ImageSize(d.rows, d.cols), bf, z.ptr<float>());
 }
 

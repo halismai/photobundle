@@ -27,7 +27,10 @@ inline std::string to_string(std::string s) { return s; }
 }; // std
 
 
+
 namespace utils {
+
+template <typename T> inline void UNUSED(T&&) {}
 
 /** case insenstive string comparision */
 bool icompare(const std::string& a, const std::string& b);
@@ -369,8 +372,8 @@ T ConfigFile::get(std::string name, const T& default_val) const
   try {
     return get<T>(name);
   } catch(const std::exception& ex) {
-    Warn("ConfigFile: get %s Error: %s [using default %s]\n",
-         name.c_str(), ex.what(), std::to_string(default_val).c_str());
+    /*Warn("ConfigFile: get %s Error: %s [using default %s]\n",
+         name.c_str(), ex.what(), std::to_string(default_val).c_str()); */
     return default_val;
   }
 }

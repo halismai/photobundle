@@ -36,7 +36,7 @@ PoseList loadPosesKittiFormat(std::string fn)
     }
   }
 
-  return convertPoseToLocal(ret);
+  return ret;
 }
 
 

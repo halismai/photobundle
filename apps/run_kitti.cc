@@ -8,20 +8,19 @@
 #include "imgproc.h"
 #include "pose_utils.h"
 
+#include <signal.h>
 
-void disparityToDepth(const cv::Mat& d, double bf, cv::Mat_<float>& z)
-{
-  assert( d.type() == cv::DataType<float>::type );
-  z.create(d.size());
+bool gStop = false;
 
-  disparityToDepth(d.ptr<const float>(), ImageSize(d.rows, d.cols), bf, z.ptr<float>());
-}
-
+void sigHandler(int) { gStop = true; }
 
 int main(int argc, char** argv)
 {
+  signal(SIGINT, sigHandler);
+
   utils::ProgramOptions options;
   options
+      ("output,o", "refined_poses.txt", "trajectory output file")
       ("config,c", "../config/kitti_stereo.cfg", "config file")
       .parse(argc, argv);
 
@@ -30,17 +29,31 @@ int main(int argc, char** argv)
   auto Bf = dataset->calibration().b() * dataset->calibration().fx();
   auto T_init = loadPosesKittiFormat(cf.get<std::string>("trajectory"));
 
+  PhotometricBundleAdjustment::Result result;
   PhotometricBundleAdjustment photoba(dataset->calibration(), dataset->imageSize(), {cf});
+
+  EigenAlignedContainer_<Mat44> T_opt;
 
   cv::Mat_<float> zmap;
   UniquePointer<DatasetFrame> frame;
-  for(int f_i = 0; (frame = dataset->getFrame(f_i)); ++f_i) {
+  for(int f_i = 0; (frame = dataset->getFrame(f_i)) && !gStop; ++f_i) {
+    printf("Frame %05d\n", f_i);
+
     disparityToDepth(frame->disparity(), Bf, zmap);
-    // TODO add frame to bundle adjustment
+
+    auto I = frame->image().ptr<const uint8_t>();
+    auto Z = zmap.ptr<float>();
+
+    photoba.addFrame(I, Z, T_init[f_i],  &result);
+    if(!result.refinedPoints.empty()) {
+      // store the refinement points if you'd like
+    }
   }
 
+  auto output_fn = options.get<std::string>("output");
+  Info("Writing refined poses to %s\n", output_fn.c_str());
+  writePosesKittiFormat(output_fn, result.poses);
 
-  writePosesKittiFormat("poses.txt", T_init); // TODO
   return 0;
 }
 
