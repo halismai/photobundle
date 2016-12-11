@@ -194,7 +194,7 @@ class IsLocalMax_
 
       for(int r = -_radius; r <= _radius; ++r) {
         for(int c = -_radius; c <= _radius; ++c) {
-          if(!(!r && !c) && _I(r,c) >= v) {
+          if(!(!r && !c) && _I(r+row,c+col) >= v) {
             return false;
           }
         }

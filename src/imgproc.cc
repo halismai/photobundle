@@ -189,7 +189,7 @@ Image_<uint8_t> censusTransform(const uint8_t* I_ptr, const ImageSize& im_size)
   tbb::parallel_for(tbb::blocked_range<int>(1, im_size.rows-1),
                     CensusTransformFunc(I_ptr, im_size.cols, dst_ptr));
 #else
-  for(int y = 1; y < I.rows() - 1; ++y) {
+  for(int y = 1; y < im_size.rows - 1; ++y) {
     auto srow = I_ptr + y*im_size.cols;
     auto drow = dst_ptr + y*im_size.cols;
     census_row(srow, im_size.cols, drow);

@@ -56,7 +56,6 @@ if(OpenCV_FOUND AND WITH_OPENCV)
   add_definitions(-DWITH_OPENCV)
 endif()
 
-
 if(OPENMP_FOUND)
   add_definitions(-DWITH_OPENMP)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
